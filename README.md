@@ -9,17 +9,18 @@ Hey, I'm **The Nut**—a playful gamer and beginner coder who's been tinkering w
 AI as a coding partner and learn as I build. I'm working on tools to help people with different needs pick skills,
 understand builds, and enjoy games. My Arc Raiders skill-picker idea is still in development and isn't ready yet.
 
-## What's here now
+## What works today
 
 The `overlay/` folder contains the early Diablo IV player-guided skill-tree overlay. It reads the screen and mouse
 position, then highlights the next skill node; **you make the clicks**. A separate self/auto-picker exists, but it
 is not included in this repository.
 
-The overlay is still rough: it can be slow, and its ring can drift away from the skill icon, making it unclear where
-to click. Those are the main problems we're asking contributors to help solve. The game data is downloaded from
-Maxroll when needed; the large data files, local logs, screenshots, and private handoff notes are not included.
+This is a working but experimental prototype—not a finished app. It can be slow, and its ring can drift away from
+the skill icon, making it unclear where to click. Those are the specific problems we're asking contributors to
+help solve. The game data is downloaded from Maxroll when needed; large data files, local logs, screenshots, and
+private handoff notes are not included.
 
-## The idea
+## Roadmap (not built yet)
 
 Open a simple chat window that asks how the player likes to play, then offers up to three build options labeled
 **1 / 2 / 3**. The player chooses one and gets a clear skill plan with plain-language explanations of how to use
@@ -32,10 +33,8 @@ Make choices easy to understand and navigate; support keyboard and pointer input
 assuming prior game knowledge; and invite feedback from disabled players and accessibility practitioners. These
 are goals, not a claim of formal accessibility certification.
 
-## Scope and status
-
-The chat-based choice of up to three builds, gameplay explanations, gear-roll review, tempering coach, and
-text-to-speech are **future ideas, not implemented yet**. The included overlay is player-guided and does not send
+The build-choice chat, gameplay coaching, gear-roll review, tempering guidance, and text-to-speech are ideas for
+future versions; they are not included in the current prototype. The overlay is player-guided and does not send
 game clicks or key presses. A disclaimer cannot make unauthorized automation permitted; check Blizzard's current
 terms before connecting any tool to the game.
 
