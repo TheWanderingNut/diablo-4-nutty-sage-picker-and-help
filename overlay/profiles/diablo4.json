@@ -1,4 +1,48 @@
 {
   "game": "Diablo IV",
-  "window_title": "Diablo IV"
+  "default_mode": "auto",
+  "click_style": "click",
+  "hold_seconds": 0,
+  "open_screen_hint": "Skill Tree (press A - your keybind). Paragon P, inventory I.",
+  "points_label": "Available Points (top-left panel, number between two small diamonds)",
+  "choice_nodes": {
+    "open_with": "direct",
+    "confirm_label": "none",
+    "confirm_style": "click"
+  },
+  "tree_notes": "Skill tree is a vertical chain of clusters (Basic, Core, Defensive/Macabre/etc, ..., Ultimate, Key Passive). Lower clusters unlock after spending enough points. Each active skill has an Enhanced upgrade then a pick-one of two upgrades. Left-click adds a point, right-click refunds. The tree scrolls; scroll down to reach later clusters. Paragon: boards connected through gates, glyph sockets, legendary node per board.",
+  "scroll": {
+    "enabled": true,
+    "amount": -5,
+    "max_scrolls": 6
+  },
+  "node_cache": {},
+  "warning": "Blizzard's Warden anti-cheat is stricter than Embark's. Default mode is 'guide' (hover + highlight, no clicking). Use --mode auto at your own risk.",
+  "window_title": "Diablo IV",
+  "_keys_note": "D4 default PC binds (keybinds live on the Battle.net account, not in LocalPrefs.txt). Friends who remapped: edit here.",
+  "keys": {"skill_assignment": "s", "skill_tree": "shift+s", "class_panel": "shift+c", "character": "c", "map": "tab", "close": "esc",
+    "skills": "a",
+    "inventory": "i",
+    "_paragon_note": "no default key - Paragon is a tab in the Abilities panel (P = SHOP, never press it)"
+  },
+  "search_box": true,
+  "use_cache": false,
+  "search_box_anchor": {
+    "from_right_h": 0.187,
+    "from_top_h": 0.112,
+    "_note": "measured 2560x1369 window: box center ~ (2304,153) px"
+  },
+  "locator": "map",
+  "tree_class": "Warlock",
+  "expand_arrow_anchor": {
+    "from_right_h": 0.657,
+    "from_top_h": 0.4996,
+    "_note": "red <- arrow on the ABILITIES side panel"
+  },
+  "top_view_anchor": {
+    "skill": "Command Fallen",
+    "dx_h": -0.0928,
+    "y_h": 0.561,
+    "_note": "first Basic skill's spot in the top-clamped, max-zoom-out full tree"
+  }
 }

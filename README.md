@@ -20,7 +20,33 @@ the skill icon, making it unclear where to click. Those are the specific problem
 help solve. The game data is downloaded from Maxroll when needed; large data files, local logs, screenshots, and
 private handoff notes are not included.
 
+## New: Diablo BOB - Human-Proof Guidance (October 10)
+
+`overlay/bob.py` is a new way to follow a build, and it fixes the drifting-ring problem by letting **you** line
+things up instead of guessing:
+
+1. Open the full skill tree, zoom all the way out, and hover any big skill square so BOB knows your class.
+2. BOB draws a **ghost outline** of one tree section, with the section number in the middle. A circle (or an arrow,
+   if it's off screen) shows where that section is right now.
+3. Drag the tree until the real squares sit in the outline. It turns **green**; let go of the mouse, and after a
+   second it locks with a chime.
+4. **Every node to pick in that section gets a box at once**, each with a line to how many times to click it
+   (`x1`, `x9`...). Click them; each box counts down as you click and turns into a green check.
+5. Section done, chime, next section. At the end you get a short how-to-play note.
+
+It never moves the mouse or presses keys - it only watches where you click. F7 = "it's lined up" / "this section
+is done" if it ever gets stuck, F12 = quit. First full run on a live Warlock placed every point correctly.
+Known issues: boxes can sit slightly off-centre on some nodes, and resuming after a restart relies on reading
+"points spent" from the screen, so a full refund is the most reliable start.
+
+```powershell
+cd overlay
+python bob.py
+```
+
 ## Roadmap (not built yet)
+
+Next up: pointing out which skill goes in which action-bar slot.
 
 Open a simple chat window that asks how the player likes to play, then offers up to three build options labeled
 **1 / 2 / 3**. The player chooses one and gets a clear skill plan with plain-language explanations of how to use

@@ -1,7 +1,5 @@
 """BUILD PILOT - GUIDE MODE. Shows you where to click; YOU click. Never moves your mouse or presses keys.
 
-The Nutty Sage • tinkered together by The Nut, learning with AI.
-
   python guide.py                       # best Maxroll build for your class + level
   python guide.py <maxroll guide url>   # a specific build
   F8 = manually confirm the current node if a click is not detected; F12 = quit
@@ -135,12 +133,14 @@ class PointsWatcher(threading.Thread):
     def __init__(self):
         super().__init__(daemon=True)
         self.value, self.stop = points_left(), False
+        self._prev = self.value
 
     def run(self):
         while not self.stop:
             v = points_left()
-            if v is not None:
+            if v is not None and v == self._prev:  # same number twice in a row = real (one misread can't jump)
                 self.value = v
+            self._prev = v
             time.sleep(0.3)
 
 
@@ -153,7 +153,7 @@ def wait_for_tree(ov):
         time.sleep(0.5)
     sw, sh = ov.root.winfo_screenwidth(), ov.root.winfo_screenheight()
     ov.banner("ZOOM ALL THE WAY OUT", "Scroll down to maximum zoom, then press F9 to continue.",
-              color="#ff3030", size=40, at=(sw // 2, sh // 2), flash=True)
+              color="#ff3030", size=40, at=(sw // 2, int(sh * 0.42)), flash=True)  # Joe 10/10: middle, blinking, on a dark panel
     while not f9_pressed():
         if f12():
             raise SystemExit
@@ -257,95 +257,105 @@ def main():
         manual_request_until = 0.0
         # Joe 10/9: a countdown lags behind the OCR. Say the TARGET RANK the node itself shows ("15/15") instead.
         got_until = 0.0
-        for i, s in enumerate(steps):
+        # 10/9 Joe test: F8 after a click counted the same point twice and the guide raced ahead (to ~33).
+        # Now: F8 = "I clicked it, move on" = exactly ONE point; the counter's drop for that click is then
+        # absorbed instead of counted again. F9 = back one point (missed node). Counter changes only count after two
+        # identical reads (PointsWatcher), so one OCR misread can't jump ahead.
+        i, absorb, wrong = 0, 0, 0
+        while i < len(steps):
+            s = steps[i]
+            if s["left"] <= 0:
+                i += 1
+                continue
             n = tmap.get(s["skill"], s.get("upgrade"))
             name = s.get("upgrade") or s["skill"]
             small = bool(s.get("upgrade"))
-            while s["left"] > 0:
-                if f12():
-                    raise SystemExit
-                if f8_pressed():
-                    if pending_spend:
-                        pending_spend -= 1
-                        s["left"] -= 1
+            if f12():
+                raise SystemExit
+            if f8_pressed():
+                s["left"] -= 1
+                if wrong:
+                    wrong -= 1  # the point the counter already saw - accepted as this node
+                else:
+                    absorb += 1  # the counter hasn't dropped yet: its coming drop is this same click
+                warn = ""
+                got_until = time.time() + 1.5
+                continue
+            if f9_pressed():
+                j = i if s["left"] < s.get("times", 1) else i - 1
+                while j > 0 and steps[j]["left"] >= steps[j].get("times", 1):
+                    j -= 1
+                if j >= 0 and steps[j]["left"] < steps[j].get("times", 1):
+                    steps[j]["left"] += 1
+                    i = j
+                    warn = "Went back one. If that point is in the tree, right-click it to undo, then click the ring."
+                continue
+            img = screenshot()
+            trk.update(img)
+            x, y = trk.predict(n)
+            mx, my = pyautogui.position()
+            mx, my = mx - r["left"], my - r["top"]
+            near = (mx - x) ** 2 + (my - y) ** 2 < (0.12 * trk.h) ** 2
+            # the player's own hover is the best sensor: mouse near the ring -> read the tooltip; right node = snap
+            if near and time.time() - hover_check > 1.0:
+                hover_check = time.time()
+                tip = read_tooltip(img)
+                if title_match(tip, name):
+                    trk.ox += mx - x
+                    trk.oy += my - y
+                    x, y = mx, my
+            label = (f"{skill_points.get(s['skill'], 0)} POINTS TOTAL" if not small else "1 POINT")
+            if time.time() < got_until:
+                label = "✓ POINT CONFIRMED   " + label
+            pts = pw.value
+            available_text = str(pts) if pts is not None else "reading"
+            point_prompt = (f"{s['skill'].upper()} — {skill_points.get(s['skill'], 1)} POINTS TOTAL"
+                            if not small else f"{name.upper()} — 1 POINT")
+            done_pts = planned - sum(x_["left"] for x_ in steps)  # Joe: count in POINTS (71), not steps (29)
+            if pts == 0:
+                point_prompt = "STOP — 0 POINTS AVAILABLE"
+                point_detail = f"Still need points for {name}. Don't click; check the counter."
+            else:
+                point_detail = (f"Point {done_pts + 1} of {planned}  |  Left overall: {available_text}  |  "
+                                f"F8 = I clicked it, next   F9 = back one")
+            if warn:
+                point_detail = warn
+            if 0.06 * trk.w < x < 0.94 * trk.w and 0.12 * trk.h < y < 0.86 * trk.h:
+                radius = int((0.014 if small else 0.034) * trk.h)
+                screen_x, screen_y = r["left"] + x, r["top"] + y
+                banner_y = screen_y + radius + 76
+                if banner_y > ov.root.winfo_screenheight() - 105:
+                    banner_y = screen_y - radius - 76
+                connector_y = screen_y + radius + 8 if banner_y > screen_y else screen_y - radius - 8
+                ov.banner(point_prompt, point_detail, color="#ff3030", size=24,
+                          at=(screen_x, banner_y), connect=(screen_x, connector_y))
+                ov.show(screen_x, screen_y, radius=radius, label=label)
+            else:
+                d = "up" if y < 0.12 * trk.h else "down" if y > 0.86 * trk.h else "left" if x < 0.06 * trk.w else "right"
+                ex = min(max(x, 0.1 * trk.w), 0.9 * trk.w)
+                ey = min(max(y, 0.2 * trk.h), 0.8 * trk.h)
+                ov.banner(point_prompt, f"Target is {d} of screen; drag the tree to bring it into view. "
+                          f"Points available: {available_text}. Don't click yet.", color="#ff3030", size=30)
+                ov.arrow(r["left"] + ex, r["top"] + ey, d, label)
+            if pts is not None and last_pts is not None and pts < last_pts:
+                drop = last_pts - pts
+                take = min(absorb, drop)  # already counted by F8
+                absorb -= take
+                drop -= take
+                if drop:
+                    # WHICH node got it? the one under the player's mouse (they just clicked it)
+                    tip = read_tooltip(screenshot())
+                    if title_match(tip, name) or not tip.get("lines"):
+                        s["left"] -= min(drop, s["left"])
                         warn = ""
                         got_until = time.time() + 1.5
                     else:
-                        manual_request_until = time.time() + 6
-                        warn = "F8 received. Waiting for the point to register; don't click again yet."
-                img = screenshot()
-                trk.update(img)
-                x, y = trk.predict(n)
-                mx, my = pyautogui.position()
-                mx, my = mx - r["left"], my - r["top"]
-                near = (mx - x) ** 2 + (my - y) ** 2 < (0.12 * trk.h) ** 2
-                # 10/9 Joe test: the player's own hover is the best sensor. Mouse near the ring -> read the tooltip;
-                # right node = snap the ring (and the whole map) exactly onto it.
-                if near and time.time() - hover_check > 1.0:
-                    hover_check = time.time()
-                    tip = read_tooltip(img)
-                    if title_match(tip, name):
-                        trk.ox += mx - x
-                        trk.oy += my - y
-                        x, y = mx, my
-                        warn = ""
-                label = (f"{skill_points.get(s['skill'], 0)} POINTS TOTAL"
-                         if not small else "1 POINT")
-                if time.time() < got_until:
-                    label = "✓ POINT CONFIRMED   " + label
-                pts = pw.value
-                available_text = str(pts) if pts is not None else "reading"
-                point_prompt = (f"{s['skill'].upper()} — {skill_points.get(s['skill'], 1)} POINTS TOTAL"
-                                if not small else f"{name.upper()} — 1 POINT")
-                if pts == 0:
-                    point_prompt = "STOP — 0 POINTS AVAILABLE"
-                    point_detail = f"Still need points for {name}. Don't click; check the counter."
-                else:
-                    point_detail = f"Left overall: {available_text}  |  Click once; if stuck, press F8 NEXT."
-                if warn:
-                    point_detail = warn
-                if 0.06 * trk.w < x < 0.94 * trk.w and 0.12 * trk.h < y < 0.86 * trk.h:
-                    radius = int((0.014 if small else 0.034) * trk.h)
-                    screen_x, screen_y = r["left"] + x, r["top"] + y
-                    banner_y = screen_y + radius + 76
-                    if banner_y > ov.root.winfo_screenheight() - 105:
-                        banner_y = screen_y - radius - 76
-                    connector_y = screen_y + radius + 8 if banner_y > screen_y else screen_y - radius - 8
-                    ov.banner(point_prompt, point_detail, color="#ff3030", size=24,
-                              at=(screen_x, banner_y), connect=(screen_x, connector_y))
-                    ov.show(screen_x, screen_y, radius=radius,
-                            label=label)
-                else:
-                    d = "up" if y < 0.12 * trk.h else "down" if y > 0.86 * trk.h else "left" if x < 0.06 * trk.w else "right"
-                    ex = min(max(x, 0.1 * trk.w), 0.9 * trk.w)
-                    ey = min(max(y, 0.2 * trk.h), 0.8 * trk.h)
-                    ov.banner(point_prompt, f"Target is {d} of screen; drag the tree to bring it into view. "
-                              f"Points available: {available_text}. Don't click yet.", color="#ff3030", size=30)
-                    ov.arrow(r["left"] + ex, r["top"] + ey, d, label)
-                if manual_request_until and time.time() > manual_request_until:
-                    manual_request_until = 0.0
-                    warn = "No new point was detected. Check the points counter before trying again."
-                if pts is not None and last_pts is not None and pts < last_pts:
-                    spent_now = last_pts - pts
-                    # a point was spent: WHICH node? the one under the player's mouse (they just clicked it)
-                    if spent_now:
-                        if manual_request_until:
-                            s["left"] -= min(spent_now, s["left"])
-                            manual_request_until = 0.0
-                            warn = ""
-                            got_until = time.time() + 1.5
-                        else:
-                            tip = read_tooltip(screenshot())
-                            if title_match(tip, name) or not (tip.get("lines")):
-                                s["left"] -= spent_now  # right node (or unreadable - trust the ring)
-                                warn = ""
-                                got_until = time.time() + 1.5
-                            else:
-                                got = (tip.get("name") or "another node")
-                                pending_spend += spent_now
-                                warn = f"Point detected on {got}. Press F8 NEXT to accept, or right-click to undo."
-                last_pts = pts if pts is not None else last_pts
-                time.sleep(0.25)
+                        wrong += drop
+                        got = tip.get("name") or "another node"
+                        warn = (f"That point went into {got}. Right-click it to undo - "
+                                f"or press F8 if it was the right node.")
+            last_pts = pts if pts is not None else last_pts
+            time.sleep(0.25)
         pw.stop = True
         ov.clear("ring")
         ov.banner("All done!", "Your skills are set. A 'how to play' note is opening.")

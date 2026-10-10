@@ -3,7 +3,17 @@
 This early Windows prototype reads the Diablo IV skill tree, watches the player's pointer position, and draws a
 ring and guidance around the next planned skill node. It does not move the pointer, click, or send game key presses.
 
-## Run
+## Diablo BOB - Human-Proof Guidance (recommended)
+
+```powershell
+python bob.py
+python bob.py <Maxroll guide URL>
+```
+
+Section by section: line the tree up with the ghost outline (it turns green, let go, it locks), then click every
+boxed node the number of times shown. F7 = lined up / section done, F12 = quit. See the main README for details.
+
+## Run (original one-node-at-a-time guide)
 
 From this folder, install the packages in `requirements.txt`, then run:
 
