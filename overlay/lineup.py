@@ -27,7 +27,13 @@ class Lineup:
         cx = (min(p[0] for p in pts) + max(p[0] for p in pts)) / 2
         cy = (min(p[1] for p in pts) + max(p[1] for p in pts)) / 2
         hx, hy = sec["hub"]
-        return 0.5 * self.w + self.sx * (hx - cx), 0.47 * self.h + self.sy * (hy - cy)
+        # Joe 10/10: a section high on the screen makes the game drop each node's tooltip DOWN over the other nodes.
+        # Sit the section lower (centre ~58% down) so tooltips have room above, but keep it above the Skill
+        # Assignment bar (bottom <= 82%) and below the top panels (top >= 12%).
+        half_span = self.sy * (max(p[1] for p in pts) - min(p[1] for p in pts)) / 2
+        cy_screen = min(0.58 * self.h, 0.82 * self.h - half_span)
+        cy_screen = max(cy_screen, 0.12 * self.h + half_span)
+        return 0.5 * self.w + self.sx * (hx - cx), cy_screen + self.sy * (hy - cy)
 
     def layout(self, sec) -> tuple[tuple, list]:
         """(hub screen px, [skill square screen px]) where the section SHOULD sit."""

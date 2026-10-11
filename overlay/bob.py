@@ -22,12 +22,18 @@ import numpy as np
 
 import pyautogui  # pyautogui.position() only: where YOUR mouse is
 
+import collect
+import detect
+
 from guide import PointsWatcher, calibrate, f12, squares, wait_for_tree
 from highlight import Overlay
 from lineup import Lineup
 from maxplan import best_guide, make_plan
 from screen import load_profile, points_left, read_level, read_spent, region, screen_size, screenshot
 from treemap import TreeMap
+
+
+STEADY = {}  # detect.Steady per Lineup: the fitted scale is measured once per run, then frozen
 
 
 class ClickRecorder(threading.Thread):
@@ -100,8 +106,10 @@ def wait_lineup(ov, lu, sec, n_points, prev_origin):
         if f12():
             raise SystemExit
         img = screenshot()
-        origin, last = follow(origin, last, img)
-        locked, n, fix = lu.check(sec, squares(img))
+        det = detect.find(img)  # Joe 10/10: trained detector (falls back to the old square finder)
+        f = detect.fit(det, lu)  # where is the tree right now? (drives the "Section N is HERE" marker)
+        origin, last = ((f[0], f[1]), gray(img)) if f else follow(origin, last, img)
+        locked, n, fix = lu.check(sec, [(x, y) for x, y, _ in det["skill"]])
         if key_down(0x76) and origin is not None:  # F7: "it's lined up, trust me" (re-lock after points are spent)
             while key_down(0x76):
                 time.sleep(0.05)
@@ -149,7 +157,7 @@ def wait_lineup(ov, lu, sec, n_points, prev_origin):
         time.sleep(0.2)
 
 
-def click_section(ov, lu, tmap, sec, steps, origin, pw, clicks, left):
+def click_section(ov, lu, tmap, sec, steps, origin, pw, clicks, left, target=None):
     """Box every node of the section with its click count; follow the tree; tick boxes off as points land.
     Points are credited to the boxes the player actually clicked (ClickRecorder), oldest click first.
     Safety net: once the section's whole point total has been spent it is done. F7 = skip ("I did it").
@@ -159,10 +167,12 @@ def click_section(ov, lu, tmap, sec, steps, origin, pw, clicks, left):
     scr = lambda p: (r["left"] + p[0], r["top"] + p[1])
     need = sum(left)
     down_since = None
+    sx, sy = lu.sx, lu.sy  # fitted by the detector each frame
+    collected = False
     last_click = time.time()
     nodes = [tmap.get(s["skill"], s.get("upgrade")) for s in steps]
     last, last_pts, lost_since = None, pw.value, None
-    start_pts = pw.value
+    warned = False
     items = []
     clicks.take()  # forget clicks made while lining up
     _, sq_want = lu.layout(sec)
@@ -183,26 +193,22 @@ def click_section(ov, lu, tmap, sec, steps, origin, pw, clicks, left):
             origin, last = follow(origin, last, img)
         else:
             last = gray(img)
-        # keep the boxes glued to the real tree: nudge onto the visible skill squares
-        found = squares(img)
-        pred = [(origin[0] + lu.sx * x, origin[1] + lu.sy * y) for x, y in sec["skills"].values()]
-        res = []
-        for px, py in pred:
-            near = min(found, key=lambda p: (p[0] - px) ** 2 + (p[1] - py) ** 2, default=None)
-            if near and abs(near[0] - px) < 0.022 * lu.h and abs(near[1] - py) < 0.022 * lu.h:
-                res.append((near[0] - px, near[1] - py))
-        # Joe 10/10: a clicked node's tooltip has a skill-icon square at its top - one stray square pulled the boxes.
-        # Need 2+ squares that agree; when not dragging the tree can't move, so only allow tiny corrections.
+        # Joe 10/10: the trained detector finds the big squares + hubs (~2 px); the rigid map measures every small node.
+        # Fit position AND scale to what is seen every frame -> centred boxes that follow the tree.
         dragging = down_since is not None
-        if len(res) >= 2:
-            mx = sorted(a for a, _ in res)[len(res) // 2]
-            my = sorted(b for _, b in res)[len(res) // 2]
-            agree = [(a, b) for a, b in res if abs(a - mx) < 4 and abs(b - my) < 4]
-            if len(agree) >= 2:
-                dx = sum(a for a, _ in agree) / len(agree)
-                dy = sum(b for _, b in agree) / len(agree)
-                cap = 0.022 * lu.h if dragging else 3
-                origin = (origin[0] + max(-cap, min(cap, dx)), origin[1] + max(-cap, min(cap, dy)))
+        det = detect.find(img)
+        steady = STEADY.setdefault(id(lu), detect.Steady(lu))  # one per run: frozen scale + median position
+        f = steady.fit(det, (origin[0], origin[1]))
+        if f is None and dragging:
+            f = detect.fit(det, lu)  # fast drag: find the tree anywhere
+        f = steady.update(f, dragging)
+        if f:
+            nox, noy, nsx, nsy = f
+            # not dragging = the tree can't move: ignore a big jump (a tooltip's icon square, a bad frame)
+            if dragging or abs(nox - origin[0]) + abs(noy - origin[1]) < 0.03 * lu.h:
+                origin, sx, sy = (nox, noy), nsx, nsy
+            if not collected and not dragging:
+                collected = bool(collect.save(img, origin, lu, tag="bob", scale=(sx, sy)))  # self-labeling dataset
             lost_since = None
         elif dragging:
             lost_since = lost_since or time.time()
@@ -227,7 +233,7 @@ def click_section(ov, lu, tmap, sec, steps, origin, pw, clicks, left):
                       f"  -> x{left[j]} left", flush=True)
         items = []
         for i, (s, n, k) in enumerate(zip(steps, nodes, left)):
-            x, y = origin[0] + lu.sx * n["x"], origin[1] + lu.sy * n["y"]
+            x, y = origin[0] + sx * n["x"], origin[1] + sy * n["y"]
             half = (0.016 if s.get("upgrade") else 0.030) * lu.h  # Joe 10/10: boxes a bit bigger
             items.append((*scr((x, y)), half, f"x{max(k, 0)}", k <= 0))
         ov.targets(items)
@@ -235,14 +241,33 @@ def click_section(ov, lu, tmap, sec, steps, origin, pw, clicks, left):
         if pts is not None and last_pts is not None and pts != last_pts:
             print(f"[bob] points {last_pts} -> {pts}", flush=True)
         last_pts = pts if pts is not None else last_pts
-        spent_here = (start_pts - pts) if (pts is not None and start_pts is not None) else 0
-        # (no points-based auto-finish any more: the slow reader could still be counting the LAST section's points)
-        # section done: every box clicked AND (the points agree, or 3 s since the last click - the reader lags)
-        if all(k <= 0 for k in left) and (spent_here >= need or time.time() - last_click > 3.0):
-            if spent_here < need:
-                print(f"[bob] section {sec['section']}: clicks say done, points reader saw {spent_here}/{need}", flush=True)
-            ov.clear("targets")
-            return origin, "done"
+        # Joe 10/10: BOB counted 4 clicks the game never took (too fast / upgrade before its skill / edge of the box).
+        # Section done = every box clicked AND the points reader agrees: points left <= what should be left after this
+        # section (counted from the start of the run, so a slow reader can't mix sections up).
+        if all(k <= 0 for k in left):
+            if target is None or pts is None:
+                if time.time() - last_click > 3.0:  # can't check - trust the clicks
+                    ov.clear("targets")
+                    return origin, "done"
+            elif pts <= target:
+                ov.clear("targets")
+                return origin, "done"
+            elif time.time() - last_click < 8.0:  # the reader takes ~3 s to confirm a change
+                ov.banner("Checking your points...", f"Section {sec['section']}: all boxes clicked", color="#30ff60",
+                          size=24)
+                time.sleep(0.15)
+                continue
+            else:
+                miss = pts - target
+                if not warned:
+                    print(f"[bob] section {sec['section']}: {miss} point(s) didn't go in", flush=True)
+                    chime("turn")
+                    warned = True
+                ov.banner(f"{miss} point{'s' if miss > 1 else ''} didn't go in", "Hover the boxed skills: the game "
+                          "shows each rank. Click the missing ones - BOB moves on when the points match (F7 = skip).",
+                          color="#ff3030", size=26)
+                time.sleep(0.15)
+                continue
         todo = sum(max(0, k) for k in left)
         ov.banner(f"Click each boxed node the number of times shown",
                   f"Section {sec['section']}: {todo} clicks to go  |  points available: {pts if pts is not None else '?'}"
@@ -251,11 +276,95 @@ def click_section(ov, lu, tmap, sec, steps, origin, pw, clicks, left):
         time.sleep(0.15)
 
 
+def refind(found, skills, lu, need=3, cell=14):
+    """Where is the tree, from scratch? Every (seen square, map square) pair votes for an origin; the origin that
+    3+ seen squares agree on (within ~14 px - the square finder wobbles ~10 px) wins. Squares are the same size everywhere, so this can't be fooled by
+    one stray square. Returns (ox, oy) or None."""
+    votes = {}
+    for fx, fy in found:
+        for x, y in skills:
+            key = (round((fx - lu.sx * x) / cell), round((fy - lu.sy * y) / cell))
+            votes[key] = votes.get(key, 0) + 1
+    if not votes:
+        return None
+    (kx, ky), n = max(votes.items(), key=lambda kv: kv[1])
+    if n < need:
+        return None
+    # refine: average the exact offsets of the squares that voted for the winner
+    exact = [(fx - lu.sx * x, fy - lu.sy * y) for fx, fy in found for x, y in skills
+             if abs(fx - lu.sx * x - kx * cell) <= cell and abs(fy - lu.sy * y - ky * cell) <= cell]
+    return sum(a for a, _ in exact) / len(exact), sum(b for _, b in exact) / len(exact)
+
+
+def collect_mode(ov, lu):
+    """python bob.py --collect (Joe 10/10): build the YOLO dataset without spending points. Line up section 1 once,
+    then drag the tree anywhere and let go (on empty space, so no tooltip): BOB re-finds the tree and saves a
+    labeled screenshot each time. F12 = done."""
+    r = region()
+    origin = wait_lineup(ov, lu, lu.sections[0], 0, None)
+    ov.clear("ghost")
+    skills = [(n["x"], n["y"]) for n in lu.tmap.nodes.values() if not n.get("upgrade")]
+    last, down_since, let_go, saved, count = None, None, None, False, 0
+    flash_until = 0.0
+    sc = (lu.sx, lu.sy)
+    sid = collect.save(screenshot(), origin, lu, tag="free", min_gap=0)
+    count += bool(sid)
+    while True:
+        if f12():
+            break
+        img = screenshot()
+        if key_down(0x01):
+            down_since = down_since or time.time()
+            let_go, saved = None, False
+            if time.time() - down_since > 0.1:
+                origin, last = follow(origin, last, img)
+        else:
+            down_since, last = None, gray(img)
+            let_go = let_go or time.time()
+        msg = f"Collecting: {count} saved. Drag the tree somewhere new, let go on EMPTY space (no tooltip). F12 = done."
+        if let_go and not saved and time.time() - let_go > 0.6:
+            mx, my = pyautogui.position()
+            # Joe 10/10: the trained detector finds the tree anywhere (~2 px, position + scale)
+            f = detect.fit(detect.find(img), lu)
+            if f is None:
+                msg = "Can't see enough skill squares here - drag more of the tree into view"
+            else:
+                origin, sc = (f[0], f[1]), (f[2], f[3])
+                if any(abs(r["left"] + origin[0] + sc[0] * x - mx) < 0.035 * lu.h and
+                       abs(r["top"] + origin[1] + sc[1] * y - my) < 0.035 * lu.h for x, y in skills):
+                    msg = "Move the mouse off the nodes (the tooltip would get in the picture)"
+                else:
+                    if collect.save(img, origin, lu, tag="free", min_gap=0, scale=sc):
+                        count += 1
+                        chime("locked")
+                        flash_until = time.time() + 1.2  # Joe 10/10: show what got labeled
+                    saved = True
+        if time.time() < flash_until:  # flash the skill squares just labeled (overlay never shows in screenshots)
+            ox, oy = origin
+            ov.targets([(r["left"] + ox + sc[0] * x, r["top"] + oy + sc[1] * y, 0.026 * lu.h, "", True)
+                        for x, y in skills if 0 < ox + sc[0] * x < lu.w and 0.08 * lu.h < oy + sc[1] * y < 0.86 * lu.h])
+        else:
+            ov.clear("targets")
+        ov.banner(f"DATASET MODE - {count} saved", msg, color="#30ff60", size=24)
+        time.sleep(0.15)
+    print(f"[collect] done: {count} labeled screenshots in {collect.ROOT}", flush=True)
+
+
 def main():
     load_profile("diablo4")
+    f12(), f12(), key_down(0x76)  # Joe 10/10: an F12 from the LAST run was still 'pressed' - forget old presses
+    from guide import f9_pressed
+    f9_pressed()
     ov = Overlay()
     try:
         wait_for_tree(ov)
+        if "--collect" in sys.argv:
+            from maxplan import CLASS_TREES
+            cls, _, _, _ = calibrate(ov)
+            key = CLASS_TREES.get(cls, cls)
+            w, h = screen_size()
+            collect_mode(ov, Lineup(key, TreeMap(key), w, h))
+            return
         level, avail, spent = read_level(), points_left(), read_spent()
         spent = spent or 0
         if spent:  # Joe 10/10: pick up where you left off (you've been following BOB's own section order)
@@ -283,6 +392,8 @@ def main():
         clicks.start()
         origin = None
         skip = spent  # points already in: the first ones in BOB's section order
+        base = pw.value  # points available when BOB started (after any resume)
+        planned = 0      # points the sections so far SHOULD have spent since then
         for sec, sec_steps in groups:
             left = [s.get("times", 1) for s in sec_steps]  # survives a re-lock (Joe's video: it forgot his clicks)
             for i in range(len(left)):
@@ -291,10 +402,12 @@ def main():
                 skip -= take
             if not any(left):
                 continue  # this whole section is already done
+            planned += sum(left)
+            target = None if base is None else base - planned  # points that should be left after this section
             while True:
                 origin = wait_lineup(ov, lu, sec, sum(left), origin)
                 ov.clear("ghost")
-                origin, result = click_section(ov, lu, tmap, sec, sec_steps, origin, pw, clicks, left)
+                origin, result = click_section(ov, lu, tmap, sec, sec_steps, origin, pw, clicks, left, target)
                 while key_down(0x76):  # F7 still held: don't let it skip the next section too
                     time.sleep(0.05)
                 if result == "done":

@@ -6,3 +6,5 @@ pillow
 requests
 rapidocr
 onnxruntime
+# optional - the trained detector (much steadier boxes):
+# ultralytics

@@ -44,6 +44,19 @@ cd overlay
 python bob.py
 ```
 
+### Update (Oct 10, night): a trained detector keeps the boxes on the nodes
+
+BOB now ships with a small trained detector (`overlay/models/d4ui.pt`, YOLO). It finds the big skill squares and section
+diamonds in about 20-50 ms, and the rigid tree map measures every small node from them (position and scale), so the
+boxes stay centred and follow the tree when you drag it, without jitter. Other fixes from live testing: clicks are
+counted where they land and never un-count, the lineup only locks after you let go of the mouse, sections sit lower so
+tooltips don't cover them, and a section only finishes when the in-game point counter agrees (otherwise BOB says how
+many points didn't go in).
+
+The detector is optional: `pip install ultralytics` to use it; without it BOB falls back to its older square finder.
+Tip: grab the tree by empty space, and move the mouse off the skills after letting go (tooltips hide the nodes).
+`python bob.py --collect` saves labeled screenshots for training a better detector (off unless you ask for it).
+
 ## Roadmap (not built yet)
 
 Next up: pointing out which skill goes in which action-bar slot.

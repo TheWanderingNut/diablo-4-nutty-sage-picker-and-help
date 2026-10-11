@@ -68,7 +68,7 @@ def write_howto(plan: dict, guide_url: str, open_it: bool = True) -> Path:
     lines += ["", f"Full guide: {guide_url}"]
     if plan.get("source"):
         lines.append(f"Planner (gear, paragon, glyphs): {plan['source']}")
-    lines += ["", "Set up by Build Pilot."]
+    lines += ["", "Guided by Diablo BOB - Human-Proof Guidance."]
     path = ROOT / "plans" / (re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_") + "_HOW_TO_PLAY.txt")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
