@@ -1,5 +1,9 @@
 # Diablo 4 Nutty Sage: Build Picker & Helper
 
+> **An accessibility aid for Diablo IV.** BOB shows you *where* to click on the skill tree and explains your build in
+> plain words: numbered boxes, big outlines, sound cues, short tips. It never clicks for you; you stay in control.
+> Built for players who find the skill tree hard to read, hard to navigate or overwhelming.
+
 **BOB the Nutty Sage** is a community-minded Diablo IV build helper. This is a separate project; it does not replace
 or change the existing `build-pilot` auto-picker.
 
