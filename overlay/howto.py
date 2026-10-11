@@ -47,6 +47,18 @@ def tips(url: str, n: int = 5) -> list[str]:
     return out
 
 
+def tag_keys(tip: str, skill_bar: list) -> str:
+    """Joe 10/10: show the key next to each skill named in a tip: 'Keep up the Clash [key 1] - Punishment buff'."""
+    labels = {"1": "key 1", "2": "key 2", "3": "key 3", "4": "key 4", "Left mouse": "left mouse",
+              "Right mouse": "right mouse"}
+    pairs = sorted(zip(KEYS, skill_bar), key=lambda p: -len(p[1]))  # longest names first (no partial matches)
+    for k, sk in pairs:
+        m = re.search(rf"\b{re.escape(sk)}\b", tip, flags=re.I)
+        if m and "[" not in tip[m.end():m.end() + 2]:
+            tip = f"{tip[:m.end()]} [{labels[k]}]{tip[m.end():]}"
+    return tip
+
+
 def write_howto(plan: dict, guide_url: str, open_it: bool = True) -> Path:
     name = re.sub(r" - \d+ points$", "", plan.get("build_name", "Build"))
     lines = [name, "=" * len(name), ""]
@@ -64,7 +76,8 @@ def write_howto(plan: dict, guide_url: str, open_it: bool = True) -> Path:
         lines += ["", "BOOK OF THE DEAD (Necromancer)"] + [f"  {x}" for x in book]
     t = tips(guide_url)
     if t:
-        lines += ["", "HOW TO PLAY IT (from the Maxroll guide)"] + [f"  - {x}" for x in t]
+        bar = plan.get("skill_bar", [])
+        lines += ["", "HOW TO PLAY IT (from the Maxroll guide)"] + [f"  - {tag_keys(x, bar)}" for x in t]
     lines += ["", f"Full guide: {guide_url}"]
     if plan.get("source"):
         lines.append(f"Planner (gear, paragon, glyphs): {plan['source']}")

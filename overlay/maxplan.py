@@ -65,6 +65,36 @@ def pick_variant(variants: list, level: int) -> int:
     return usable[0]
 
 
+def unlock_levels(tree_key: str) -> dict:
+    """Joe 10/10 (Lord of Hatred trees): padlocks with a level (9 / 14 / 30) sit on branch JUNCTIONS, and everything
+    behind one is locked too. A node's real unlock level = the highest requiredLevel on the easiest path to it from
+    a section hub. Returns {node id: level}."""
+    import heapq
+    from hubs import tree_sections
+    d = json.load(open(DATA / "d4_data.min.json", encoding="utf-8"))
+    t = d["skillTrees"][tree_key]
+    nodes = t["nodes"]  # connections use the node's INDEX in this list
+    nbr = {i: [] for i in range(len(nodes))}
+    for c in t["connections"]:
+        nbr[c["node1"]].append(c["node2"])
+        nbr[c["node2"]].append(c["node1"])
+    hubs = [tuple(s["hub"]) for s in tree_sections(tree_key)]
+    lvl = lambda i: nodes[i].get("requiredLevel", 0) or 0
+    best, heap = {}, []
+    for i, n in enumerate(nodes):
+        if any(abs(n["pos"]["x"] - hx) < 1 and abs(n["pos"]["y"] - hy) < 1 for hx, hy in hubs):
+            heapq.heappush(heap, (lvl(i), i))
+    while heap:
+        e, i = heapq.heappop(heap)
+        if i in best:
+            continue
+        best[i] = e
+        for j in nbr[i]:
+            if j not in best:
+                heapq.heappush(heap, (max(e, lvl(j)), j))
+    return {nodes[i]["id"]: e for i, e in best.items()}
+
+
 def make_plan(src: str, points: int, level: int = 100, variant: int | None = None) -> dict:
     ensure_data()
     pid = profile_id_from(src)
@@ -86,7 +116,10 @@ def make_plan(src: str, points: int, level: int = 100, variant: int | None = Non
     def cost(state):
         return sum(v - (1 if is_basic(int(k)) else 0) for k, v in state.items() if v)
 
-    stages = [{int(k): v for k, v in s["data"].items() if v} for s in pv["skillTree"]["steps"]]
+    unlock = unlock_levels(tree_key)
+    # skip anything still padlocked at this character's level (Lord of Hatred junction locks)
+    stages = [{int(k): v for k, v in s["data"].items() if v and unlock.get(int(k), 0) <= level}
+              for s in pv["skillTree"]["steps"]]
     # furthest affordable stage
     chosen, nxt = {}, None
     for i, st in enumerate(stages):
