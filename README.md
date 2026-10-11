@@ -4,6 +4,11 @@
 > plain words: numbered boxes, big outlines, sound cues, short tips. It never clicks for you; you stay in control.
 > Built for players who find the skill tree hard to read, hard to navigate or overwhelming.
 
+<p align="center">
+  <a href="media/bob_demo.mp4"><img src="media/bob_demo.gif" alt="B.O.B., a floating iron orb with a green eye, scans the Diablo IV skill tree and marks the first skill to pick with a gold box and the number 1" width="600"></a><br>
+  <em>B.O.B. marks the spot, you make the click. <a href="media/bob_demo.mp4">Watch with sound</a>.</em>
+</p>
+
 **BOB the Nutty Sage** is a community-minded Diablo IV build helper. This is a separate project; it does not replace
 or change the existing `build-pilot` auto-picker.
 
